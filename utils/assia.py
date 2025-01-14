@@ -1,17 +1,27 @@
 #!/usr/bin/env python3
+from typing import Optional, Tuple
 from pyrogram.raw.functions.messages.request_web_view import RequestWebView
 from urllib.parse import unquote
 from utils.core import logger
 from fake_useragent import UserAgent
 from pyrogram.client import Client
 from data import config
+from datetime import datetime
 
 import aiohttp
 import asyncio
 import random
 
-class Blum:
-    def __init__(self, thread: int, account: str, proxy : str):
+class Assia:
+    def __init__(
+        self,
+        thread: int,
+        account: str,
+        proxy : str
+    ):
+        """
+        Initialize the class
+        """
         self.thread = thread
         self.name = account
 
@@ -44,7 +54,7 @@ class Blum:
             self.proxy = None
 
         self.auth_token = ""
-        self.ref_token=""
+        self.ref_token = ""
         headers = {'User-Agent': UserAgent(os='android').random}
         self.session = aiohttp.ClientSession(
             headers=headers, trust_env=True,
@@ -52,13 +62,16 @@ class Blum:
         )
 
     async def main(self):
+        """Main function
+        """
         await asyncio.sleep(random.randint(*config.ACC_DELAY))
         try:
             login = await self.login()
             if login == False:
                 await self.session.close()
                 return 0
-            logger.info(f"main | Thread {self.thread} | {self.name} | Start! | PROXY : {self.proxy}")
+            logger.info(
+                f"main | Thread {self.thread} | {self.name} | Start! | PROXY : {self.proxy}")
         except Exception as err:
             logger.error(f"main | Thread {self.thread} | {self.name} | {err}")
             await self.session.close()
@@ -72,43 +85,30 @@ class Blum:
                     await self.safe_refresh()
                 await asyncio.sleep(random.randint(*config.MINI_SLEEP))
 
-                await self.claim_diamond()
-                await self.claim_diamond_retry()
-                await asyncio.sleep(random.randint(*config.MINI_SLEEP))
-
                 try:
-                    timestamp, start_time, end_time = await self.balance()
+                    time = await self.balance()
+
+                    if not time:
+                        logger.warning(f"main | Thread {self.thread} | {self.name} | No farming time found. Retrying...")
+                        await asyncio.sleep(random.randint(*config.MINI_SLEEP))
+                        raise
+                    _, end_time = time
                 except:
                     continue
 
-                await self.get_referral_info()
-                await asyncio.sleep(random.randint(*config.MINI_SLEEP))
-
-                await self.do_tasks()
-                await asyncio.sleep(random.randint(*config.MINI_SLEEP))
-
-                if config.SPEND_DIAMONDS:
-                    diamonds_balance = await self.get_diamonds_balance()
-                    logger.info(f"main | Thread {self.thread} | {self.name} | Have {diamonds_balance} diamonds!")
-                    for _ in range(diamonds_balance):
-                        await self.game()
-                        await asyncio.sleep(random.randint(*config.SLEEP_GAME_TIME))
-
-                if start_time is None and end_time is None:
-                    await self.start()
-                    logger.info(f"main | Thread {self.thread} | {self.name} | Start farming!")
-                elif start_time is not None and end_time is not None and timestamp >= end_time:
-                    timestamp, balance = await self.claim()
-                    logger.success(f"main | Thread {self.thread} | {self.name} | Claimed reward! Balance: {balance}")
-                else:
-                    add_sleep = random.randint(60, 120)  # added some extra seconds between 1 and 2 minutes.
-                    time_difference = end_time - timestamp + add_sleep
-                    hours = time_difference // 3600
-                    minutes = (time_difference % 3600) // 60
-                    seconds = time_difference % 60
-                    logger.info(f"main | Thread {self.thread} | {self.name} | Sleep {hours} hours, {minutes} minutes, {seconds} seconds !")
-                    await asyncio.sleep(time_difference)
-                    await self.login()
+                timestamp = int(datetime.utcnow().timestamp())
+                add_sleep = random.randint(60, 150)  # added some extra seconds between 1 and 2 minutes.
+                time_difference = end_time - timestamp + add_sleep
+                if time_difference < 0:
+                    time_difference = 0
+                hours = time_difference // 3600
+                minutes = (time_difference % 3600) // 60
+                seconds = time_difference % 60
+                logger.info(f"main | Thread {self.thread} | {self.name} | Sleep {hours} hours, {minutes} minutes, {seconds} seconds !")
+                await asyncio.sleep(time_difference)
+                await self.is_token_valid()
+                balance = await self.claim()
+                logger.info(f"main | Thread {self.thread} | {self.name} | Balance: {balance}")
                 await asyncio.sleep(random.randint(*config.MINI_SLEEP))
             except Exception as err:
                 logger.error(f"main | Thread {self.thread} | {self.name} | {err}")
@@ -122,27 +122,29 @@ class Blum:
                     await asyncio.sleep(5*random.randint(*config.MINI_SLEEP))
 
     async def safe_refresh(self):
+        """Refresh token"""
         try:
-            await self.refresh()
+            await self.login()
         except Exception as err:
             logger.error(f"safe_refresh | Thread {self.thread} | {self.name} | {err}")
             await asyncio.sleep(5)
 
-    async def claim(self):
+    async def claim(self) -> Optional[int]:
+        """Claim reward"""
         try:
-            resp = await self.session.post("https://api.assai8.com/api/user/receive_airdrop_mining", proxy=self.proxy)
+            resp = await self.session.post(
+                "https://api.assai8.com/api/user/receive_airdrop_mining",
+                proxy=self.proxy)
             resp_json = await resp.json()
-            return int(resp_json.get("timestamp")/1000), resp_json.get("availableBalance")
+
+
+            return resp_json.get("availableBalance")
         except:
             pass
 
-    async def start(self):
-        try:
-            resp = await self.session.post("https://game-domain.blum.codes/api/v1/farming/start", proxy = self.proxy)
-        except:
-            pass
-
-    async def balance(self):
+    async def balance(
+        self
+    ) -> Optional[Tuple[int, int]]:
         """
         Get balance and farming start and end time
 
@@ -151,17 +153,15 @@ class Blum:
         """
         try:
 
-            resp = await self.session.get("https://api.assai8.com/api/user/mine", proxy=self.proxy)
-            resp_json = await resp.json()
-            timestamp = resp_json.get("timestamp")
+            resp = await self.session.get(
+                "https://api.assai8.com/api/user/mine", proxy=self.proxy)
+            resp_json = (await resp.json())["data"]
 
-            if resp_json.get("farming"):
-                start_time = resp_json.get("farming").get("startTime")
-                end_time = resp_json.get("farming").get("endTime")
-                return int(timestamp/1000), int(start_time/1000), int(end_time/1000)
-            return int(timestamp), None, None
+            start_time = resp_json.get("mining_start_time")
+            end_time = resp_json.get("mining_end_time")
+            return int(start_time), int(end_time)
         except:
-            pass
+            return None
 
 
     async def login(self):
@@ -187,9 +187,8 @@ class Blum:
                 )
 
                 if resp.headers.get('Content-Type', '').startswith('application/json'):
-                    resp_data = await resp.json()
-                    self.ref_token = resp_data.get("token", {}).get("refresh")
-                    self.session.headers['Authorization'] = "Bearer " + resp_data.get("token", {}).get("access", "")
+                    resp_data = (await resp.json())["data"]
+                    self.session.headers['Authorization'] = "Bearer " + resp_data.get("token", "")
                     return True
 
                 else:
@@ -212,10 +211,11 @@ class Blum:
         await self.client.connect()
         try:
             web_view = await self.client.invoke(RequestWebView(
-                peer=await self.client.resolve_peer('ASSAI8BOT'),
-                bot=await self.client.resolve_peer('ASSAI8BOT'),
+                peer=await self.client.resolve_peer('ASSAI8Bot'),
+                bot=await self.client.resolve_peer('ASSAI8Bot'),
                 platform='android',
                 from_bot_menu=False,
+                url="https://api.assai8.com"
             ))
 
             auth_url = web_view.url
@@ -231,77 +231,10 @@ class Blum:
     async def is_token_valid(self):
         """check if the token is valid
         """
-        response = await self.session.get("https://user-domain.blum.codes/api/v1/user/me", proxy=self.proxy)
+        response = await self.session.get(
+            "https://api.assai8.com/api/user/mine", proxy=self.proxy)
 
         if response.status == 200:
             return True
-        elif response.status == 401:
-            error_info = await response.json()
-            return error_info.get("code") != 16
         else:
             return False
-
-    async def refresh(self):
-
-        refresh_payload = {
-            'refresh': self.ref_token
-        }
-
-        if "authorization" in self.session.headers:
-            del self.session.headers['authorization']
-
-        response = await self.session.post(
-            "https://gateway.blum.codes/v1/auth/refresh", json=refresh_payload, proxy=self.proxy)
-
-        if response.status == 200:
-            data = await response.json()
-            new_access_token = data.get("access")
-            new_refresh_token = data.get("refresh")
-
-            if new_access_token:
-                self.auth_token = new_access_token
-                self.ref_token = new_refresh_token
-                self.session.headers['Authorization'] = "Bearer "+self.auth_token
-                logger.info(f"refresh | Thread {self.thread} | {self.name} | Token refreshed successfully.")
-            else:
-                raise Exception("New access token not found in the response")
-        else:
-            raise Exception("Failed to refresh the token")
-
-    async def get_diamonds_balance(self):
-        resp = await self.session.get("https://game-domain.blum.codes/api/v1/user/balance",proxy = self.proxy)
-        resp_json = await resp.json()
-        return resp_json['playPasses']
-
-    async def game(self):
-        response = await self.session.post('https://game-domain.blum.codes/api/v1/game/play', proxy=self.proxy)
-        logger.info(f"game | Thread {self.thread} | {self.name} | Start DROP GAME!")
-        if 'message' in await response.json():
-            logger.error(f"game | Thread {self.thread} | {self.name} | DROP GAME CAN'T START")
-            valid = await self.is_token_valid()
-            if not valid:
-                logger.warning(f"main | Thread {self.thread} | {self.name} | Token is invalid. Refreshing token...")
-                await self.refresh()
-            return
-        text = (await response.json())['gameId']
-        count = random.randint(*config.POINTS)
-        if count >=160:
-            await asyncio.sleep(30+(count-160)//7*4)
-        else:
-            await asyncio.sleep(30)
-        json_data = {
-            'gameId': text,
-            'points': count,
-        }
-
-        response = await self.session.post('https://game-domain.blum.codes/api/v1/game/claim', json=json_data, proxy=self.proxy)
-
-        if await response.text() == "OK":
-            logger.success(f"game | Thread {self.thread} | {self.name} | Claimed DROP GAME ! Claimed: {count}")
-        elif "Invalid jwt token" in await response.text():
-            valid = await self.is_token_valid()
-            if not valid:
-                logger.warning(f"game | Thread {self.thread} | {self.name} | Token is invalid. Refreshing token...")
-                await self.refresh()
-        else:
-            logger.error(f"game | Thread {self.thread} | {self.name} | {await response.text()}")

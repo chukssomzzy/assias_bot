@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+from utils.assia import Assia
 from utils.core import create_sessions
 from utils.telegram import Accounts
-from utils.blum import Blum
 from data.config import hello, USE_PROXY
 import asyncio
 import os
@@ -34,17 +34,17 @@ async def main():
 
                 for thread, account in enumerate(accounts):
                     if account in proxy_dict:
-                        tasks.append(asyncio.create_task(Blum(account=account, thread=thread, proxy=proxy_dict[account]).main()))
+                        tasks.append(asyncio.create_task(Assia(account=account, thread=thread, proxy=proxy_dict[account]).main()))
                     else:
-                        tasks.append(asyncio.create_task(Blum(account=account, thread=thread, proxy=None).main()))
+                        tasks.append(asyncio.create_task(Assia(account=account, thread=thread, proxy=None).main()))
             else:
                 for thread, account in enumerate(accounts):
-                    tasks.append(asyncio.create_task(Blum(account=account, thread=thread, proxy=None).main()))
+                    tasks.append(asyncio.create_task(Assia(account=account, thread=thread, proxy=None).main()))
 
             try:
                 await asyncio.wait_for(asyncio.gather(*tasks), timeout=random.randint(2400,3600))
             except asyncio.TimeoutError:
-                logger.info("Timeout reached. Closing Blum running Code...")
+                logger.info("Timeout reached. Closing Assia running Code...")
 
             for task in tasks:
                 if not task.done():
@@ -54,7 +54,7 @@ async def main():
                     except asyncio.CancelledError:
                         logger.info(f"Running code is Closed")
 
-            logger.info("Restarting Blum Code...")
+            logger.info("Restarting Assia Code...")
 
 if __name__ == '__main__':
     asyncio.get_event_loop().run_until_complete(main())

@@ -1,3 +1,4 @@
+from typing import Dict, Optional
 from utils.core import logger
 from pyrogram import Client
 from data import config
@@ -24,9 +25,11 @@ class Accounts:
         if config.USE_PROXY:
             proxy_dict = {}
             with open('proxy.txt','r') as file:
-                proxy_list = [i.strip().split() for i in file.readlines() if len(i.strip().split()) == 2]
-                for prox,name in proxy_list:
-                    proxy_dict[name] = prox
+                proxy_dict = {
+                    parts[1]: parts[0]
+                    for i in file if len(parts := i.strip().split()) == 2
+                }
+
             for session in sessions:
                 try:
                     if session in proxy_dict:
@@ -38,36 +41,21 @@ class Accounts:
                             "username": proxy.split(':')[2],
                             "password": proxy.split(':')[3],
                         }
-                        client = Client(name=session, api_id=self.api_id, api_hash=self.api_hash, workdir=self.workdir,proxy=proxy_client)
 
-                        if await client.connect():
+                        if await self.is_session_valid(session, proxy_client):
                             valid_sessions.append(session)
-                        else:
-                            logger.error(f"{session}.session is invalid")
-
-                        await client.disconnect()
                     else:
-                        client = Client(name=session, api_id=self.api_id, api_hash=self.api_hash, workdir=self.workdir)
-
-                        if await client.connect():
+                        if await self.is_session_valid(session):
                             valid_sessions.append(session)
-                        else:
-                            logger.error(f"{session}.session is invalid")
-                        await client.disconnect()       
                 except:
                     logger.error(f"{session}.session is invalid")
             logger.success(f"Valid sessions: {len(valid_sessions)}; Invalid: {len(sessions)-len(valid_sessions)}")
-                
+
         else:
             for session in sessions:
                 try:
-                    client = Client(name=session, api_id=self.api_id, api_hash=self.api_hash, workdir=self.workdir)
-
-                    if await client.connect():
+                    if await self.is_session_valid(session):
                         valid_sessions.append(session)
-                    else:
-                        logger.error(f"{session}.session is invalid")
-                    await client.disconnect()
                 except:
                     logger.error(f"{session}.session is invalid")
             logger.success(f"Valid Sessions: {len(valid_sessions)}; Invalid: {len(sessions) - len(valid_sessions)}")
@@ -81,3 +69,21 @@ class Accounts:
             raise ValueError("No valid sessions")
         else:
             return accounts
+
+    async def is_session_valid(self, session: str, proxy_client: Optional[Dict] = None) -> bool:
+        """Check if a session is still valid"""
+        client = Client(
+            name=session,
+            api_id=self.api_id,
+            api_hash=self.api_hash,
+            workdir=self.workdir,
+            proxy=proxy_client
+        )
+
+        if await client.connect():
+            return True
+        else:
+            logger.error(f"{session}.session is invalid")
+
+        await client.disconnect()
+        return False
